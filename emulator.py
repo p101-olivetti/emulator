@@ -9,8 +9,8 @@ import numpy as np
 
 __author = 'Giovanni Mocellin, Matteo Poletto, Federico Rubbi'
 __status__ = 'developing'
-__version__ = '1.2'
-__date__ = '17 March 2021'
+__version__ = '1.4'
+__date__ = '23 March 2021'
 
 
 # Bug found:
@@ -90,6 +90,7 @@ class Register:
         """
         self.reg = np.zeros((REG_LEN_MAX), dtype='short')
         self.float_active = False
+        self.sign = '+'
 
     def read_register(self):
         """
@@ -97,7 +98,7 @@ class Register:
         """
         # Convert array representation to string.
         reg_value = ''.join([str(x) for x in list(self.reg[:22])])
-        # Add sign and reverse it
+        # Add sign and reverse it.
         reg_value = (reg_value + self.sign)[::-1]
         if self.float_active:  # add floating point
             reg_value = f'{reg_value[:-self.float_pos]}.'\
@@ -110,20 +111,22 @@ class Register:
         """
         Convert value to register array representation.
         """
-        value = str(value)  # convert to string
-        self.sign = value[0]  # add sign if needed
-        if not value[0].isdigit():  # remove sign if any
-            value = value[1:]
-            
-        if '.' in value:
-            self.float_pos = value[::-1].find('.')  # update float position
-            self.float_active = True  # set float_active flag
-            value = value.replace('.', '')  # remove float point
-            
-        # Write each digit at the matching index in the register.
-        for (i, x) in enumerate(value[::-1]):
-            self.reg[i] = int(x)
-
+        try:
+            value = str(value)  # convert to string
+            self.sign = value[0]  # add sign if needed
+            if not value[0].isdigit():  # remove sign if any
+                value = value[1:]
+                
+            if '.' in value:
+                self.float_pos = value[::-1].find('.')  # update float position
+                self.float_active = True  # set float_active flag
+                value = value.replace('.', '')  # remove float point
+                
+            # Write each digit at the matching index in the register.
+            for (i, x) in enumerate(value[::-1]):
+                self.reg[i] = int(x)
+        except IndexError:  # if more than 22 digits
+            raise Exception("Value too big for register.")
 
 # Registers instances.
 M = Register()
@@ -134,8 +137,8 @@ C = Register()
 D = Register()
 E = Register()
 F = Register()
-#P1 = Register()
-#P2 = Register()
+# P1 = Register()
+# P2 = Register()
 
 
 def print_registers():
@@ -180,12 +183,83 @@ def main():
         elif pressed_key == ',' and previous_key in '0123456789':
             M.float_active = True
 
+        # Process key: sign -.
+        elif pressed_key == '_':
+            M.sign = '-'
+
+        # Process key: +.
+        elif pressed_key == '+':
+            value = M.read_register() + A.read_register()
+            A.write_register(value)
+
+        # Process key: operator -.
+        elif pressed_key == '-':
+            value = M.read_register() - A.read_register()
+            A.write_register(value)
+
+        # Process key: ×.
+        elif pressed_key == '×':
+            # Compute product.
+            value = M.read_register() * A.read_register()
+            # Write registers A and R and print result.
+            A.write_register(value)
+            R.write_register(value)
+            print(value)
+
+        # Process key: ÷.
+        elif pressed_key == '÷':
+            # TODO: add remainder.
+            try:
+                value = M.read_register() / A.read_register()
+            except ZeroDivisionError:
+                print('error: division by zero')
+            A.write_register(value)
+            print(value)
+
+        # Process key: √.
+        elif pressed_key == '√':
+            value = M.read_register()
+            if value < 0:
+                print('error: square root of negative number')
+                continue
+            # Compute square root.
+            value = value ** 0.5
+            # Write A and M registers and print result.
+            A.write_register(value)
+            M.write_register(2 * value)
+            print(value)
+            
         # Process key: ◊.
         elif pressed_key == '◊':
-            if previous_key in 'MBCDEF':  # print selected register
+            if previous_key in 'BCDEF':  # print selected register
                 exec(f'print({previous_key}.read_register())')
             else:  # print M register by default
                 print(M.read_register())
+
+        # Process key: *.
+        elif pressed_key == '*':
+            if previous_key in 'ARBCDEF':  # print selected register
+                exec(f'print({previous_key}.read_register())')
+                if pressed_key != 'R':  # erase register if not R
+                    exec(f'{pressed_key}.erase()')
+            else:
+                print(M.read_register())
+
+        # Process key: r.
+        elif pressed_key == 'r':
+            M.erase()
+            A.erase()
+            R.erase()
+            B.erase()
+            C.erase()
+            D.erase()
+            E.erase()
+            F.erase()
+
+        # Process key: r.
+        elif pressed_key == 'u':
+            # TODO: implement registers backup.
+            previous_key == previous_key_backup
 
         # Process key: ↓.
         elif pressed_key == '↓':
@@ -193,7 +267,16 @@ def main():
 
         # Proces key: ↑.
         elif pressed_key == '↑' and previous_key in 'BCDEF':
-                exec(f'{previous_key}.reg = M.reg')
+            exec(f'{previous_key}.reg = M.reg')
+
+        # Precess key: ↕.
+        elif pressed_key == '↕':
+            if previous_key == 'A':
+                A.write_register(abs(A.read_register()))
+            elif previous_key in 'BCDEF':
+                value = A.read_register()
+                exec(f'A.write_register({previous_key}.read_register())\n'\
+                     f'{previous_key}.write_register(value))')  
 
         # Debug key.
         elif pressed_key == 'P':
@@ -201,6 +284,7 @@ def main():
             breakpoint()
         
         previous_key = pressed_key  # update previous key
+        previous_key_backup = previous_key
                 
 
 if __name__ == "__main__":
