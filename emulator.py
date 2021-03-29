@@ -9,17 +9,8 @@ import numpy as np
 
 __author = 'Giovanni Mocellin, Matteo Poletto, Federico Rubbi'
 __status__ = 'developing'
-__version__ = '1.4'
-__date__ = '23 March 2021'
-
-
-# Bug found:
-#   The sequence doesn't erase M register
-#       ◊
-#       ,
-# Possible solution:
-#   Skip previous_key update when , is pressed
-#   if previous key in not alphanumeric.
+__version__ = '1.5'
+__date__ = '29 March 2021'
 
 
 # Registers max length.
@@ -28,6 +19,9 @@ REG_LEN_MAX = 24  # 22 digits, float position and sign
 
 # Previous key pressed.
 previous_key = ''
+previous_key_backup = ''
+
+n_digits = 0
 
 
 class Register:
@@ -116,9 +110,11 @@ class Register:
             self.sign = value[0]  # add sign if needed
             if not value[0].isdigit():  # remove sign if any
                 value = value[1:]
-                
             if '.' in value:
-                self.float_pos = value[::-1].find('.')  # update float position
+                self.float_pos = value[::-1].find('.')
+                if self.float_pos > n_digits:
+                    value = value[:-self.float_pos+n_digits]  # truncate
+                    self.float_pos = n_digits
                 self.float_active = True  # set float_active flag
                 value = value.replace('.', '')  # remove float point
                 
@@ -127,6 +123,7 @@ class Register:
                 self.reg[i] = int(x)
         except IndexError:  # if more than 22 digits
             raise Exception("Value too big for register.")
+
 
 # Registers instances.
 M = Register()
@@ -155,11 +152,20 @@ def print_registers():
     print('F:', F.reg)
 
 
-def main():
+def print_result(value):
+    """
+    Print result and fill zeros.
+    """
+    print(f"{value}{''.join(['0' for _ in range(n_digits-str(value)[::-1].find('.'))])}")
+
+
+def loop():
     """
     Main loop.
     """
     global previous_key
+    global previous_key_backup
+    global n_digits
     
     while True:
         # Get input key from user.
@@ -180,8 +186,11 @@ def main():
                 M.reg[0] = int(pressed_key)
                 
         # Process key: ,.
-        elif pressed_key == ',' and previous_key in '0123456789':
-            M.float_active = True
+        elif pressed_key == ',':
+            if previous_key in '0123456789':
+                M.float_active = True
+            else:  # ignore key
+                continue
 
         # Process key: sign -.
         elif pressed_key == '_':
@@ -204,37 +213,39 @@ def main():
             # Write registers A and R and print result.
             A.write_register(value)
             R.write_register(value)
-            print(value)
+            print_result(value)
 
         # Process key: ÷.
         elif pressed_key == '÷':
-            # TODO: add remainder.
             try:
                 value = M.read_register() / A.read_register()
+                if not n_digits:
+                    R.write_register(M.read_register() % A.read_register())
             except ZeroDivisionError:
                 print('error: division by zero')
+                continue
             A.write_register(value)
-            print(value)
+            print_result(value)
 
         # Process key: √.
         elif pressed_key == '√':
             value = M.read_register()
             if value < 0:
-                print('error: square root of negative number')
+                print('error: squared root of negative number')
                 continue
-            # Compute square root.
+            # Compute squared root.
             value = value ** 0.5
             # Write A and M registers and print result.
             A.write_register(value)
             M.write_register(2 * value)
-            print(value)
+            print_result(value)
             
         # Process key: ◊.
         elif pressed_key == '◊':
             if previous_key in 'BCDEF':  # print selected register
                 exec(f'print({previous_key}.read_register())')
             else:  # print M register by default
-                print(M.read_register())
+                print_result(M.read_register())
 
         # Process key: *.
         elif pressed_key == '*':
@@ -243,7 +254,7 @@ def main():
                 if pressed_key != 'R':  # erase register if not R
                     exec(f'{pressed_key}.erase()')
             else:
-                print(M.read_register())
+                print_result(M.read_register())
 
         # Process key: r.
         elif pressed_key == 'r':
@@ -258,14 +269,13 @@ def main():
 
         # Process key: r.
         elif pressed_key == 'u':
-            # TODO: implement registers backup.
-            previous_key == previous_key_backup
+            previous_key = previous_key_backup
 
         # Process key: ↓.
         elif pressed_key == '↓':
             A.reg = M.reg
 
-        # Proces key: ↑.
+        # Process key: ↑.
         elif pressed_key == '↑' and previous_key in 'BCDEF':
             exec(f'{previous_key}.reg = M.reg')
 
@@ -275,8 +285,12 @@ def main():
                 A.write_register(abs(A.read_register()))
             elif previous_key in 'BCDEF':
                 value = A.read_register()
-                exec(f'A.write_register({previous_key}.read_register())\n'\
-                     f'{previous_key}.write_register(value))')  
+                exec(f'A.write_register({previous_key}.read_register())\n'
+                     f'{previous_key}.write_register(value))')
+
+        # Process key d.
+        elif pressed_key == 'd':
+            n_digits = input()
 
         # Debug key.
         elif pressed_key == 'P':
@@ -285,7 +299,7 @@ def main():
         
         previous_key = pressed_key  # update previous key
         previous_key_backup = previous_key
-                
+
 
 if __name__ == "__main__":
-    main()
+    loop()
